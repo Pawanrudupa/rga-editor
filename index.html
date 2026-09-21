@@ -38,7 +38,7 @@
     }
 
     .container {
-      max-width: 1000px;
+      max-width: 1040px;
       margin: 0 auto;
       width: 100%;
       display: flex;
@@ -94,7 +94,8 @@
     .header-actions {
       display: flex;
       align-items: center;
-      gap: 12px;
+      flex-wrap: wrap;
+      gap: 10px;
     }
 
     button.btn {
@@ -127,6 +128,17 @@
 
     .btn-secondary:hover {
       background: #334155;
+    }
+
+    .btn-offline {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--warning);
+      border-color: rgba(245, 158, 11, 0.3);
+    }
+
+    .btn-offline.active {
+      background: var(--warning);
+      color: #0f172a;
     }
 
     .status-ribbon {
@@ -163,6 +175,16 @@
       border-radius: 50%;
       background: var(--success);
       box-shadow: 0 0 8px var(--success);
+    }
+
+    .status-dot.yellow {
+      background: var(--warning);
+      box-shadow: 0 0 8px var(--warning);
+    }
+
+    .status-dot.gray {
+      background: #64748b;
+      box-shadow: none;
     }
 
     .editor-card {
@@ -306,6 +328,108 @@
       color: var(--text-muted);
     }
 
+    /* Modal Overlay */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(15, 23, 42, 0.8);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 1000;
+    }
+
+    .modal-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      max-width: 620px;
+      width: 100%;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--card-border);
+      background: rgba(15, 23, 42, 0.4);
+    }
+
+    .modal-header h2 {
+      font-size: 1.125rem;
+      font-weight: 600;
+    }
+
+    .modal-close {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 1.25rem;
+      line-height: 1;
+    }
+
+    .modal-close:hover {
+      color: var(--text-main);
+    }
+
+    .modal-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--card-border);
+      background: #0f172a;
+    }
+
+    .modal-tab {
+      flex: 1;
+      padding: 10px 16px;
+      text-align: center;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      transition: all 0.15s;
+    }
+
+    .modal-tab.active {
+      color: var(--accent);
+      border-bottom: 2px solid var(--accent);
+      background: rgba(56, 189, 248, 0.05);
+    }
+
+    .modal-body {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      font-size: 0.875rem;
+    }
+
+    .sdp-box {
+      width: 100%;
+      height: 90px;
+      background: #0b1120;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      color: var(--text-main);
+      font-family: ui-monospace, monospace;
+      font-size: 0.75rem;
+      padding: 8px 10px;
+      resize: vertical;
+      outline: none;
+    }
+
     .instruction-callout {
       background: rgba(3, 105, 161, 0.15);
       border: 1px solid rgba(56, 189, 248, 0.3);
@@ -329,9 +453,16 @@
           <h1>RGA Collaborative Editor</h1>
           <span class="tag">Zero Dependencies</span>
         </div>
-        <p class="subtitle">Real-time Conflict-free Replicated Data Type (CRDT) with Lamport Clocks & BroadcastChannel</p>
+        <p class="subtitle">Offline-First CRDT with Lamport Clocks, BroadcastChannel & WebRTC P2P DataChannel</p>
       </div>
       <div class="header-actions">
+        <button id="btnP2P" class="btn btn-secondary" title="Connect cross-device via WebRTC P2P DataChannel">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+          P2P Remote Sync
+        </button>
+        <button id="btnOfflineToggle" class="btn btn-offline" title="Simulate offline mode to test op queueing and replay">
+          Simulate Offline
+        </button>
         <button id="btnNewTab" class="btn btn-primary" title="Open another tab connected to the same BroadcastChannel">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
           Open Collaborator Tab
@@ -342,23 +473,31 @@
     <div class="status-ribbon">
       <div class="status-item">
         <div class="status-dot"></div>
-        <span class="label">Transport:</span>
-        <span class="value">BroadcastChannel (same-origin)</span>
+        <span class="label">Local Sync:</span>
+        <span class="value">BroadcastChannel</span>
+      </div>
+      <div class="status-item">
+        <div class="status-dot gray" id="p2pStatusDot"></div>
+        <span class="label">P2P Remote:</span>
+        <span class="value" id="p2pStatusDisplay">Disconnected</span>
       </div>
       <div class="status-item">
         <span class="label">Site ID:</span>
         <span class="value" id="siteIdDisplay">loading...</span>
       </div>
       <div class="status-item">
-        <span class="label">Peers Seen:</span>
-        <span class="value" id="peersSeenCount">0</span>
+        <span class="label">Offline Queue:</span>
+        <span class="value" id="offlineQueueDisplay">0 ops</span>
+        <button id="btnClearQueue" class="btn btn-secondary" style="padding: 1px 6px; font-size: 0.6875rem; margin-left: 4px;" title="Clear offline queue">Clear</button>
       </div>
     </div>
 
     <div class="instruction-callout">
-      <strong>How to test live multi-tab merge:</strong>
-      Click <strong>"Open Collaborator Tab"</strong> (or open this URL in another tab). Type in both tabs simultaneously.
-      Notice that edits merge in real-time, concurrent keystrokes resolve deterministically, and remote edits never disrupt your local cursor position.
+      <strong>How to test Milestone 3A:</strong>
+      <ol style="margin-left: 20px; margin-top: 6px;">
+        <li><strong>WebRTC P2P Pairing:</strong> Click <strong>"P2P Remote Sync"</strong>. On Tab/Device 1 click <em>"Start as Host"</em>, copy the generated Offer JSON. On Tab/Device 2 click <em>"Join as Guest"</em>, paste the Offer, copy the generated Answer, and paste it back into Tab/Device 1. Once connected, edits stream directly peer-to-peer!</li>
+        <li><strong>Offline Queue & Replay:</strong> Click <strong>"Simulate Offline"</strong>, type some text (observe the <em>Offline Queue</em> counter increase), then click <strong>"Go Online"</strong> to watch the queued operations replay, deduplicate, and merge cleanly!</li>
+      </ol>
     </div>
 
     <div class="editor-card">
@@ -366,7 +505,7 @@
         <span>Document Editor</span>
         <span id="cursorPos">Ln 1, Col 1</span>
       </div>
-      <textarea id="editor" placeholder="Type here... Open another tab to test concurrent collaborative editing!" spellcheck="false"></textarea>
+      <textarea id="editor" placeholder="Type here... Open another tab or click P2P Remote Sync to test collaborative editing!" spellcheck="false"></textarea>
       <div class="editor-footer">
         <div class="metrics-group">
           <div class="metric"><span>Visible Chars:</span> <strong id="metricChars">0</strong></div>
@@ -394,41 +533,129 @@
     </div>
   </div>
 
+  <!-- P2P Remote Sync Modal -->
+  <div class="modal-overlay" id="p2pModal" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>P2P WebRTC Remote Pairing</h2>
+        <button class="modal-close" id="modalClose">&times;</button>
+      </div>
+      <div class="modal-tabs">
+        <button class="modal-tab active" id="tabHost">1. Host (Create Session)</button>
+        <button class="modal-tab" id="tabGuest">2. Guest (Join Session)</button>
+      </div>
+      <div class="modal-body" id="hostView">
+        <p style="color: var(--text-muted);">
+          As <strong>Host</strong>, click "Generate Offer" to initiate an RTCPeerConnection with Vanilla ICE candidate bundling.
+        </p>
+        <button class="btn btn-primary" id="btnCreateOffer">Generate Offer</button>
+        <div>
+          <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Offer SDP JSON (share with guest):</label>
+          <textarea class="sdp-box" id="txtOfferOutput" readonly placeholder="Click 'Generate Offer' above..."></textarea>
+          <button class="btn btn-secondary" id="btnCopyOffer" style="margin-top: 6px; font-size: 0.75rem;">Copy Offer</button>
+        </div>
+        <div style="border-top: 1px solid var(--card-border); padding-top: 12px;">
+          <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Paste Guest's Answer JSON:</label>
+          <textarea class="sdp-box" id="txtAnswerInput" placeholder="Paste the Answer JSON received from guest here..."></textarea>
+          <button class="btn btn-primary" id="btnApplyAnswer" style="margin-top: 6px;">Complete Connection</button>
+        </div>
+      </div>
+      <div class="modal-body" id="guestView" style="display: none;">
+        <p style="color: var(--text-muted);">
+          As <strong>Guest</strong>, paste the Host's Offer JSON below to generate an Answer.
+        </p>
+        <div>
+          <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Paste Host's Offer JSON:</label>
+          <textarea class="sdp-box" id="txtOfferInput" placeholder="Paste host's Offer JSON here..."></textarea>
+          <button class="btn btn-primary" id="btnCreateAnswer" style="margin-top: 6px;">Generate Answer</button>
+        </div>
+        <div style="border-top: 1px solid var(--card-border); padding-top: 12px;">
+          <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Your Answer SDP JSON (send back to host):</label>
+          <textarea class="sdp-box" id="txtAnswerOutput" readonly placeholder="Answer will appear here..."></textarea>
+          <button class="btn btn-secondary" id="btnCopyAnswer" style="margin-top: 6px; font-size: 0.75rem;">Copy Answer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     import { CRDT } from './src/crdt.js';
     import { generateSiteId } from './src/clock.js';
     import { LocalSync } from './src/sync-local.js';
+    import { RemoteSync } from './src/sync-remote.js';
+    import { OfflineStore } from './src/persistence.js';
     import { EditorBinding } from './src/editor.js';
 
-    // 1. Initialize Site ID & CRDT
+    // 1. Initialize Site ID, CRDT, OfflineStore, and Transports
     const siteId = generateSiteId();
     document.getElementById('siteIdDisplay').textContent = siteId;
 
     const crdt = new CRDT(siteId);
-    const sync = new LocalSync(siteId, 'rga-editor-sync');
+    const offlineStore = new OfflineStore();
+    await offlineStore.init();
 
-    // Track seen peers
-    const knownPeers = new Set();
-    sync.onRemoteOp((op) => {
-      if (op && op.id && op.id.siteId) {
-        knownPeers.add(op.id.siteId);
-        document.getElementById('peersSeenCount').textContent = knownPeers.size;
+    // Load any existing persistent ops from IndexedDB
+    const savedOps = await offlineStore.loadAllOps();
+    if (savedOps.length > 0) {
+      for (const op of savedOps) {
+        crdt.applyRemoteOp(op);
       }
-    });
+    }
+
+    const localSync = new LocalSync(siteId, 'rga-editor-sync');
+    const remoteSync = new RemoteSync(siteId);
 
     // 2. Bind Editor
     const textarea = document.getElementById('editor');
-    const binding = new EditorBinding(textarea, crdt, sync, {
+    const binding = new EditorBinding(textarea, crdt, [localSync, remoteSync], {
+      offlineStore,
       onUpdate: updateUI,
     });
 
-    // 3. UI Update Helpers
-    function updateUI() {
+    // 3. WebRTC Status Listener
+    const p2pStatusDisplay = document.getElementById('p2pStatusDisplay');
+    const p2pStatusDot = document.getElementById('p2pStatusDot');
+
+    remoteSync.onStatusChange((status) => {
+      p2pStatusDisplay.textContent = status === 'connected' ? 'Connected (P2P)' : (status === 'connecting' ? 'Connecting...' : 'Disconnected');
+      p2pStatusDot.className = 'status-dot ' + (status === 'connected' ? '' : (status === 'connecting' ? 'yellow' : 'gray'));
+    });
+
+    // 4. Offline Mode Simulation
+    let isSimulatedOffline = false;
+    const btnOfflineToggle = document.getElementById('btnOfflineToggle');
+    const offlineQueueDisplay = document.getElementById('offlineQueueDisplay');
+
+    btnOfflineToggle.addEventListener('click', async () => {
+      isSimulatedOffline = !isSimulatedOffline;
+      await binding.setOffline(isSimulatedOffline);
+
+      if (isSimulatedOffline) {
+        btnOfflineToggle.textContent = 'Go Online (Replay Queue)';
+        btnOfflineToggle.className = 'btn btn-offline active';
+      } else {
+        btnOfflineToggle.textContent = 'Simulate Offline';
+        btnOfflineToggle.className = 'btn btn-offline';
+      }
+      updateUI();
+    });
+
+    document.getElementById('btnClearQueue')?.addEventListener('click', async () => {
+      await offlineStore.clearQueue();
+      updateUI();
+    });
+
+    // 5. UI Metrics and Node Inspector
+    async function updateUI() {
       // Metrics
       const visibleText = crdt.toString();
       document.getElementById('metricChars').textContent = visibleText.length;
       document.getElementById('metricOps').textContent = crdt.getOps().length;
       document.getElementById('metricClock').textContent = crdt.clock.peek();
+
+      // Offline queue count
+      const queued = await offlineStore.getQueuedOps();
+      offlineQueueDisplay.textContent = `${queued.length} ops`;
 
       // Count nodes and tombstones
       let totalNodes = 0;
@@ -494,6 +721,116 @@
     // "Open Collaborator Tab" button
     document.getElementById('btnNewTab').addEventListener('click', () => {
       window.open(window.location.href, '_blank');
+    });
+
+    // 6. P2P Remote Sync Modal Logic
+    const p2pModal = document.getElementById('p2pModal');
+    const btnP2P = document.getElementById('btnP2P');
+    const modalClose = document.getElementById('modalClose');
+    const tabHost = document.getElementById('tabHost');
+    const tabGuest = document.getElementById('tabGuest');
+    const hostView = document.getElementById('hostView');
+    const guestView = document.getElementById('guestView');
+
+    btnP2P.addEventListener('click', () => {
+      p2pModal.style.display = 'flex';
+    });
+
+    modalClose.addEventListener('click', () => {
+      p2pModal.style.display = 'none';
+    });
+
+    tabHost.addEventListener('click', () => {
+      tabHost.className = 'modal-tab active';
+      tabGuest.className = 'modal-tab';
+      hostView.style.display = 'flex';
+      guestView.style.display = 'none';
+    });
+
+    tabGuest.addEventListener('click', () => {
+      tabGuest.className = 'modal-tab active';
+      tabHost.className = 'modal-tab';
+      guestView.style.display = 'flex';
+      hostView.style.display = 'none';
+    });
+
+    // Host Action: Create Offer
+    const btnCreateOffer = document.getElementById('btnCreateOffer');
+    const txtOfferOutput = document.getElementById('txtOfferOutput');
+    const btnCopyOffer = document.getElementById('btnCopyOffer');
+    const txtAnswerInput = document.getElementById('txtAnswerInput');
+    const btnApplyAnswer = document.getElementById('btnApplyAnswer');
+
+    btnCreateOffer.addEventListener('click', async () => {
+      btnCreateOffer.textContent = 'Gathering ICE Candidates...';
+      btnCreateOffer.disabled = true;
+      try {
+        const offerJson = await remoteSync.createOffer();
+        txtOfferOutput.value = offerJson;
+        btnCreateOffer.textContent = 'Offer Ready!';
+      } catch (err) {
+        alert('Failed to create offer: ' + err.message);
+        btnCreateOffer.textContent = 'Generate Offer';
+      } finally {
+        btnCreateOffer.disabled = false;
+      }
+    });
+
+    btnCopyOffer.addEventListener('click', () => {
+      if (txtOfferOutput.value) {
+        navigator.clipboard.writeText(txtOfferOutput.value);
+        btnCopyOffer.textContent = 'Copied!';
+        setTimeout(() => btnCopyOffer.textContent = 'Copy Offer', 1500);
+      }
+    });
+
+    btnApplyAnswer.addEventListener('click', async () => {
+      const answerVal = txtAnswerInput.value.trim();
+      if (!answerVal) {
+        alert('Please paste the Answer JSON from the guest first');
+        return;
+      }
+      try {
+        await remoteSync.acceptAnswer(answerVal);
+        btnApplyAnswer.textContent = 'Connected!';
+        setTimeout(() => { p2pModal.style.display = 'none'; }, 1000);
+      } catch (err) {
+        alert('Failed to connect with answer: ' + err.message);
+      }
+    });
+
+    // Guest Action: Accept Offer & Create Answer
+    const txtOfferInput = document.getElementById('txtOfferInput');
+    const btnCreateAnswer = document.getElementById('btnCreateAnswer');
+    const txtAnswerOutput = document.getElementById('txtAnswerOutput');
+    const btnCopyAnswer = document.getElementById('btnCopyAnswer');
+
+    btnCreateAnswer.addEventListener('click', async () => {
+      const offerVal = txtOfferInput.value.trim();
+      if (!offerVal) {
+        alert('Please paste the Offer JSON from the host first');
+        return;
+      }
+      btnCreateAnswer.textContent = 'Generating Answer...';
+      btnCreateAnswer.disabled = true;
+      try {
+        const answerJson = await remoteSync.acceptOfferAndCreateAnswer(offerVal);
+        txtAnswerOutput.value = answerJson;
+        btnCreateAnswer.textContent = 'Answer Ready!';
+      } catch (err) {
+        alert('Failed to create answer: ' + err.message);
+        btnCreateAnswer.textContent = 'Generate Answer';
+      } finally {
+        btnCreateAnswer.disabled = false;
+      }
+    });
+
+    btnCopyAnswer.addEventListener('click', () => {
+      if (txtAnswerOutput.value) {
+        navigator.clipboard.writeText(txtAnswerOutput.value);
+        btnCopyAnswer.textContent = 'Copied!';
+        setTimeout(() => btnCopyAnswer.textContent = 'Copy Answer', 1500);
+      }
     });
 
     // Initial render

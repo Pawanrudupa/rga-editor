@@ -1,5 +1,6 @@
 /**
- * Editor binding connecting a DOM <textarea> to the RGA CRDT and LocalSync transport.
+ * Editor binding connecting a DOM <textarea> to the RGA CRDT, multiple transports
+ * (BroadcastChannel, WebRTC), and offline persistence queue.
  * Captures user input, translates to CRDT ops, broadcasts to peers,
  * and renders remote ops while preserving local cursor position.
  */
@@ -101,32 +102,37 @@ export function computeDiff(oldText, newText, selStart = 0, selEnd = 0) {
 }
 
 /**
- * Connects an HTML `<textarea>` to an RGA CRDT instance and LocalSync transport.
+ * Connects an HTML `<textarea>` to an RGA CRDT instance, transports, and offline store.
  */
 export class EditorBinding {
   /**
    * @param {HTMLTextAreaElement} textarea - The textarea element to bind.
    * @param {import('./crdt.js').CRDT} crdt - The CRDT document.
-   * @param {import('./sync-local.js').LocalSync} sync - The BroadcastChannel sync transport.
+   * @param {object | object[]} [syncTransports] - Single transport or array of transports.
    * @param {object} [options]
+   * @param {import('./persistence.js').OfflineStore} [options.offlineStore] - IndexedDB offline store.
    * @param {() => void} [options.onUpdate] - Optional callback fired when text or stats change.
    */
-  constructor(textarea, crdt, sync, options = {}) {
+  constructor(textarea, crdt, syncTransports = [], options = {}) {
     if (!textarea) throw new Error('EditorBinding requires a textarea element');
     if (!crdt) throw new Error('EditorBinding requires a CRDT instance');
-    if (!sync) throw new Error('EditorBinding requires a LocalSync instance');
 
     this.textarea = textarea;
     this.crdt = crdt;
-    this.sync = sync;
+    this.offlineStore = options.offlineStore || null;
     this.onUpdate = options.onUpdate || (() => {});
 
+    this.isOffline = false;
     this.isApplyingRemote = false;
     this.lastValue = this.crdt.toString();
     this.textarea.value = this.lastValue;
 
     this.lastSelectionStart = this.textarea.selectionStart || 0;
     this.lastSelectionEnd = this.textarea.selectionEnd || 0;
+
+    /** @type {object[]} */
+    this.transports = [];
+    this._transportUnsubscribers = new Map();
 
     // Attach DOM event listeners
     this._boundHandleInput = this._handleInput.bind(this);
@@ -139,17 +145,78 @@ export class EditorBinding {
     this.textarea.addEventListener('pointerup', this._boundTrackSelection);
     this.textarea.addEventListener('click', this._boundTrackSelection);
 
-    // Attach sync transport listeners
-    this._unsubscribeRemoteOp = this.sync.onRemoteOp((op) => this.handleRemoteOp(op));
-    this._unsubscribeSyncRequest = this.sync.onSyncRequest((requesterId) => {
-      this.sync.sendSyncResponse(this.crdt.getOps(), requesterId);
-    });
-    this._unsubscribeSyncResponse = this.sync.onSyncResponse((ops) => {
-      this.handleBulkRemoteOps(ops);
-    });
+    // Register initial transport(s)
+    if (syncTransports) {
+      const list = Array.isArray(syncTransports) ? syncTransports : [syncTransports];
+      for (const t of list) {
+        if (t) this.addTransport(t);
+      }
+    }
+  }
 
-    // Ask existing tabs for the current document
-    this.sync.requestSync();
+  /**
+   * Registers a sync transport (e.g. LocalSync or RemoteSync).
+   * @param {object} transport
+   */
+  addTransport(transport) {
+    if (!transport || this.transports.includes(transport)) return;
+    this.transports.push(transport);
+
+    const unsubs = [];
+    if (typeof transport.onRemoteOp === 'function') {
+      unsubs.push(transport.onRemoteOp((op) => this.handleRemoteOp(op)));
+    }
+    if (typeof transport.onSyncRequest === 'function' && typeof transport.sendSyncResponse === 'function') {
+      unsubs.push(transport.onSyncRequest((requesterId) => {
+        transport.sendSyncResponse(this.crdt.getOps(), requesterId);
+      }));
+    }
+    if (typeof transport.onSyncResponse === 'function') {
+      unsubs.push(transport.onSyncResponse((ops) => {
+        this.handleBulkRemoteOps(ops);
+      }));
+    }
+
+    this._transportUnsubscribers.set(transport, unsubs);
+
+    // Ask for current state from peer
+    if (typeof transport.requestSync === 'function') {
+      transport.requestSync();
+    }
+  }
+
+  /**
+   * Removes a sync transport.
+   * @param {object} transport
+   */
+  removeTransport(transport) {
+    const idx = this.transports.indexOf(transport);
+    if (idx !== -1) {
+      this.transports.splice(idx, 1);
+      const unsubs = this._transportUnsubscribers.get(transport) || [];
+      unsubs.forEach(u => typeof u === 'function' && u());
+      this._transportUnsubscribers.delete(transport);
+    }
+  }
+
+  /**
+   * Sets offline simulation mode.
+   * When offline, local ops are queued to IndexedDB and not broadcast.
+   * When transitioning back online, queued ops are replayed and broadcasted.
+   *
+   * @param {boolean} isOffline
+   */
+  async setOffline(isOffline) {
+    if (this.isOffline === isOffline) return;
+    this.isOffline = isOffline;
+
+    if (!isOffline && this.offlineStore) {
+      await this.offlineStore.replayQueue(this.crdt, [
+        (op) => this._broadcastOp(op),
+      ]);
+    }
+
+    this.onUpdate();
   }
 
   /**
@@ -164,6 +231,8 @@ export class EditorBinding {
 
   /**
    * Handles user input from the textarea and generates corresponding CRDT ops.
+   * Updates CRDT state and lastValue synchronously to eliminate race conditions
+   * during rapid or unawaited keystrokes.
    * @private
    */
   _handleInput() {
@@ -179,7 +248,9 @@ export class EditorBinding {
       this.lastSelectionEnd
     );
 
-    // 1. Delete characters
+    const opsToDispatch = [];
+
+    // 1. Delete characters synchronously
     if (deleteCount > 0) {
       const idsToDelete = [];
       for (let i = 0; i < deleteCount; i++) {
@@ -188,18 +259,18 @@ export class EditorBinding {
       }
       for (const id of idsToDelete) {
         this.crdt.delete(id);
-        this.sync.broadcastOp({ type: 'delete', id });
+        opsToDispatch.push({ type: 'delete', id });
       }
     }
 
-    // 2. Insert characters
+    // 2. Insert characters synchronously
     if (insertedText.length > 0) {
       let prevId = insertAfterIndex >= 0 ? this.crdt.idAt(insertAfterIndex) : null;
       for (let i = 0; i < insertedText.length; i++) {
         const char = insertedText[i];
         const node = this.crdt.insert(prevId, char);
         prevId = node.id;
-        this.sync.broadcastOp({
+        opsToDispatch.push({
           type: 'insert',
           id: node.id,
           char: node.char,
@@ -208,11 +279,61 @@ export class EditorBinding {
       }
     }
 
+    // 3. Immediately update state caches synchronously
     this.lastValue = this.crdt.toString();
     this.lastSelectionStart = this.textarea.selectionStart;
     this.lastSelectionEnd = this.textarea.selectionEnd;
 
     this.onUpdate();
+
+    // 4. Asynchronously persist and/or broadcast operations
+    if (opsToDispatch.length > 0) {
+      this._dispatchOps(opsToDispatch).catch(err => {
+        console.error('Error dispatching ops:', err);
+      });
+    }
+  }
+
+  /**
+   * Dispatches ops asynchronously: queues to offlineStore if offline, otherwise broadcasts.
+   * @private
+   * @param {object[]} ops
+   */
+  async _dispatchOps(ops) {
+    for (const op of ops) {
+      if (this.isOffline) {
+        if (this.offlineStore) {
+          await this.offlineStore.queueOp(op);
+        }
+      } else {
+        this._broadcastOp(op);
+        if (this.offlineStore) {
+          await this.offlineStore.saveOp(op);
+        }
+      }
+    }
+
+    // Update UI when offline queue writes complete
+    if (this.isOffline) {
+      this.onUpdate();
+    }
+  }
+
+  /**
+   * Broadcasts an operation to all registered transports.
+   * @private
+   * @param {object} op
+   */
+  _broadcastOp(op) {
+    for (const transport of this.transports) {
+      if (typeof transport.broadcastOp === 'function') {
+        try {
+          transport.broadcastOp(op);
+        } catch (err) {
+          console.error('Error broadcasting op via transport:', err);
+        }
+      }
+    }
   }
 
   /**
@@ -226,7 +347,7 @@ export class EditorBinding {
   }
 
   /**
-   * Applies an array of historical operations from another tab on initial sync.
+   * Applies an array of historical operations from another tab/peer on initial sync.
    * @param {object[]} ops
    */
   handleBulkRemoteOps(ops) {
@@ -326,8 +447,10 @@ export class EditorBinding {
     this.textarea.removeEventListener('pointerup', this._boundTrackSelection);
     this.textarea.removeEventListener('click', this._boundTrackSelection);
 
-    if (this._unsubscribeRemoteOp) this._unsubscribeRemoteOp();
-    if (this._unsubscribeSyncRequest) this._unsubscribeSyncRequest();
-    if (this._unsubscribeSyncResponse) this._unsubscribeSyncResponse();
+    for (const [transport, unsubs] of this._transportUnsubscribers) {
+      unsubs.forEach(u => typeof u === 'function' && u());
+    }
+    this._transportUnsubscribers.clear();
+    this.transports = [];
   }
 }
