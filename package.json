@@ -1,0 +1,16 @@
+{
+  "name": "crdt-editor",
+  "version": "1.0.0",
+  "description": "Zero-dependency, offline-first collaborative text editor CRDT",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "keywords": [
+    "crdt",
+    "rga",
+    "collaborative-editing"
+  ],
+  "author": "",
+  "license": "MIT"
+}
