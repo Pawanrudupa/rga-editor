@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RGA Collaborative Text Editor — CRDT</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --card-border: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-hover: #0ea5e9;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --badge-bg: #0369a1;
+      --tombstone-bg: #451a03;
+      --tombstone-text: #f97316;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 24px;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .title-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text-main);
+    }
+
+    .tag {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: var(--badge-bg);
+      color: #e0f2fe;
+      padding: 2px 8px;
+      border-radius: 9999px;
+    }
+
+    .subtitle {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    button.btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #0f172a;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn-secondary {
+      background: var(--card-bg);
+      color: var(--text-main);
+      border-color: var(--card-border);
+    }
+
+    .btn-secondary:hover {
+      background: #334155;
+    }
+
+    .status-ribbon {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 0.8125rem;
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-item span.label {
+      color: var(--text-muted);
+    }
+
+    .status-item span.value {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+    }
+
+    .editor-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+    }
+
+    .editor-header {
+      padding: 10px 16px;
+      background: rgba(15, 23, 42, 0.6);
+      border-bottom: 1px solid var(--card-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+    }
+
+    #editor {
+      width: 100%;
+      min-height: 280px;
+      background: transparent;
+      color: var(--text-main);
+      border: none;
+      padding: 18px 20px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 1rem;
+      line-height: 1.6;
+      resize: vertical;
+      outline: none;
+      caret-color: var(--accent);
+    }
+
+    #editor::placeholder {
+      color: #475569;
+    }
+
+    .editor-footer {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 16px;
+      background: rgba(15, 23, 42, 0.8);
+      border-top: 1px solid var(--card-border);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .metrics-group {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .metric {
+      display: flex;
+      gap: 4px;
+    }
+
+    .metric strong {
+      color: var(--text-main);
+      font-family: ui-monospace, SFMono-Regular, monospace;
+    }
+
+    .inspector-panel {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .inspector-header {
+      padding: 12px 16px;
+      background: rgba(15, 23, 42, 0.6);
+      border-bottom: 1px solid var(--card-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .inspector-header h3 {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .inspector-body {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      font-size: 0.8125rem;
+    }
+
+    .node-chain {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      max-height: 180px;
+      overflow-y: auto;
+      padding: 8px;
+      background: #0b1120;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+    }
+
+    .node-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      font-family: ui-monospace, monospace;
+      font-size: 0.75rem;
+    }
+
+    .node-chip.tombstone {
+      background: var(--tombstone-bg);
+      border-color: #7c2d12;
+      color: var(--tombstone-text);
+      text-decoration: line-through;
+    }
+
+    .node-char {
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .node-id {
+      font-size: 0.6875rem;
+      color: var(--text-muted);
+    }
+
+    .instruction-callout {
+      background: rgba(3, 105, 161, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 0.8125rem;
+      line-height: 1.5;
+      color: #bae6fd;
+    }
+
+    .instruction-callout strong {
+      color: #38bdf8;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <div class="title-row">
+          <h1>RGA Collaborative Editor</h1>
+          <span class="tag">Zero Dependencies</span>
+        </div>
+        <p class="subtitle">Real-time Conflict-free Replicated Data Type (CRDT) with Lamport Clocks & BroadcastChannel</p>
+      </div>
+      <div class="header-actions">
+        <button id="btnNewTab" class="btn btn-primary" title="Open another tab connected to the same BroadcastChannel">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+          Open Collaborator Tab
+        </button>
+      </div>
+    </header>
+
+    <div class="status-ribbon">
+      <div class="status-item">
+        <div class="status-dot"></div>
+        <span class="label">Transport:</span>
+        <span class="value">BroadcastChannel (same-origin)</span>
+      </div>
+      <div class="status-item">
+        <span class="label">Site ID:</span>
+        <span class="value" id="siteIdDisplay">loading...</span>
+      </div>
+      <div class="status-item">
+        <span class="label">Peers Seen:</span>
+        <span class="value" id="peersSeenCount">0</span>
+      </div>
+    </div>
+
+    <div class="instruction-callout">
+      <strong>How to test live multi-tab merge:</strong>
+      Click <strong>"Open Collaborator Tab"</strong> (or open this URL in another tab). Type in both tabs simultaneously.
+      Notice that edits merge in real-time, concurrent keystrokes resolve deterministically, and remote edits never disrupt your local cursor position.
+    </div>
+
+    <div class="editor-card">
+      <div class="editor-header">
+        <span>Document Editor</span>
+        <span id="cursorPos">Ln 1, Col 1</span>
+      </div>
+      <textarea id="editor" placeholder="Type here... Open another tab to test concurrent collaborative editing!" spellcheck="false"></textarea>
+      <div class="editor-footer">
+        <div class="metrics-group">
+          <div class="metric"><span>Visible Chars:</span> <strong id="metricChars">0</strong></div>
+          <div class="metric"><span>Total RGA Nodes:</span> <strong id="metricNodes">0</strong></div>
+          <div class="metric"><span>Tombstones:</span> <strong id="metricTombstones">0</strong></div>
+          <div class="metric"><span>Ops Generated:</span> <strong id="metricOps">0</strong></div>
+          <div class="metric"><span>Lamport Counter:</span> <strong id="metricClock">0</strong></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="inspector-panel">
+      <div class="inspector-header" id="inspectorToggle">
+        <h3>CRDT Memory Inspector (RGA Linked Nodes & Tombstones)</h3>
+        <span id="inspectorArrow" style="color: var(--text-muted);">▼</span>
+      </div>
+      <div class="inspector-body" id="inspectorBody">
+        <p style="color: var(--text-muted); font-size: 0.75rem;">
+          Every character is a node with a Lamport timestamp <code style="color: var(--accent);">{siteId, counter}</code>. Deleted characters are kept as tombstones (orange) to guarantee convergence.
+        </p>
+        <div class="node-chain" id="nodeChain">
+          <!-- Rendered dynamically -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { CRDT } from './src/crdt.js';
+    import { generateSiteId } from './src/clock.js';
+    import { LocalSync } from './src/sync-local.js';
+    import { EditorBinding } from './src/editor.js';
+
+    // 1. Initialize Site ID & CRDT
+    const siteId = generateSiteId();
+    document.getElementById('siteIdDisplay').textContent = siteId;
+
+    const crdt = new CRDT(siteId);
+    const sync = new LocalSync(siteId, 'rga-editor-sync');
+
+    // Track seen peers
+    const knownPeers = new Set();
+    sync.onRemoteOp((op) => {
+      if (op && op.id && op.id.siteId) {
+        knownPeers.add(op.id.siteId);
+        document.getElementById('peersSeenCount').textContent = knownPeers.size;
+      }
+    });
+
+    // 2. Bind Editor
+    const textarea = document.getElementById('editor');
+    const binding = new EditorBinding(textarea, crdt, sync, {
+      onUpdate: updateUI,
+    });
+
+    // 3. UI Update Helpers
+    function updateUI() {
+      // Metrics
+      const visibleText = crdt.toString();
+      document.getElementById('metricChars').textContent = visibleText.length;
+      document.getElementById('metricOps').textContent = crdt.getOps().length;
+      document.getElementById('metricClock').textContent = crdt.clock.peek();
+
+      // Count nodes and tombstones
+      let totalNodes = 0;
+      let tombstones = 0;
+      let curr = crdt.root.next;
+      const chips = [];
+
+      while (curr) {
+        totalNodes++;
+        if (curr.deleted) tombstones++;
+
+        const isTomb = curr.deleted;
+        const displayChar = curr.char === '\n' ? '↵' : (curr.char === ' ' ? '␣' : curr.char);
+        const chip = document.createElement('span');
+        chip.className = 'node-chip' + (isTomb ? ' tombstone' : '');
+        chip.innerHTML = `<span class="node-char">${escapeHtml(displayChar)}</span> <span class="node-id">${curr.id.counter}@${curr.id.siteId.slice(0, 6)}</span>`;
+        chips.push(chip);
+
+        curr = curr.next;
+      }
+
+      document.getElementById('metricNodes').textContent = totalNodes;
+      document.getElementById('metricTombstones').textContent = tombstones;
+
+      // Update node inspector
+      const nodeChain = document.getElementById('nodeChain');
+      nodeChain.innerHTML = '';
+      if (chips.length === 0) {
+        nodeChain.innerHTML = '<span style="color: #475569; font-style: italic;">Document is empty (only Root sentinel in memory)</span>';
+      } else {
+        chips.forEach(c => nodeChain.appendChild(c));
+      }
+
+      updateCursorPos();
+    }
+
+    function updateCursorPos() {
+      const pos = textarea.selectionStart || 0;
+      const text = textarea.value.slice(0, pos);
+      const lines = text.split('\n');
+      const lineNum = lines.length;
+      const colNum = lines[lines.length - 1].length + 1;
+      document.getElementById('cursorPos').textContent = `Ln ${lineNum}, Col ${colNum}`;
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    textarea.addEventListener('keyup', updateCursorPos);
+    textarea.addEventListener('click', updateCursorPos);
+
+    // Inspector toggle
+    const inspectorToggle = document.getElementById('inspectorToggle');
+    const inspectorBody = document.getElementById('inspectorBody');
+    const inspectorArrow = document.getElementById('inspectorArrow');
+    inspectorToggle.addEventListener('click', () => {
+      const isHidden = inspectorBody.style.display === 'none';
+      inspectorBody.style.display = isHidden ? 'flex' : 'none';
+      inspectorArrow.textContent = isHidden ? '▼' : '▶';
+    });
+
+    // "Open Collaborator Tab" button
+    document.getElementById('btnNewTab').addEventListener('click', () => {
+      window.open(window.location.href, '_blank');
+    });
+
+    // Initial render
+    updateUI();
+  </script>
+</body>
+</html>

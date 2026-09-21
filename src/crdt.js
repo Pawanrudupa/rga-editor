@@ -220,6 +220,52 @@ export class CRDT {
   }
 
   /**
+   * Returns the visible 0-based character index of a given Lamport ID,
+   * or -1 if the node is deleted or not found.
+   *
+   * @param {{ siteId: string, counter: number } | null} id
+   * @returns {number}
+   */
+  indexOfId(id) {
+    if (!id) return -1;
+    let index = 0;
+    let curr = this.root.next;
+    while (curr) {
+      if (curr.id && curr.id.siteId === id.siteId && curr.id.counter === id.counter) {
+        return curr.deleted ? -1 : index;
+      }
+      if (!curr.deleted && curr.char !== null) {
+        index++;
+      }
+      curr = curr.next;
+    }
+    return -1;
+  }
+
+  /**
+   * Finds the nearest preceding non-deleted node in the sequence starting backwards from `id`.
+   * Used for "sticky cursor" positioning when an anchor character is deleted by a remote edit.
+   * Returns null if no preceding visible character exists (i.e. start of document).
+   *
+   * @param {{ siteId: string, counter: number } | null} id
+   * @returns {{ siteId: string, counter: number } | null}
+   */
+  findPrecedingVisibleNode(id) {
+    if (!id) return null;
+    let node = this.getNode(id);
+    if (!node) return null;
+
+    let curr = node.prev;
+    while (curr && curr !== this.root) {
+      if (!curr.deleted && curr.char !== null) {
+        return curr.id;
+      }
+      curr = curr.prev;
+    }
+    return null;
+  }
+
+  /**
    * Internal method: splices a node into the RGA data structure.
    * Maintains both the linked list and the sorted child tree.
    *
