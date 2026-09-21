@@ -549,6 +549,12 @@
           As <strong>Host</strong>, click "Generate Offer" to initiate an RTCPeerConnection with Vanilla ICE candidate bundling.
         </p>
         <button class="btn btn-primary" id="btnCreateOffer">Generate Offer</button>
+        <div id="hostQrContainer" style="display: none; text-align: center; padding: 8px 0;">
+          <canvas id="hostQrCanvas" style="border-radius: 6px; image-rendering: pixelated;"></canvas>
+          <p id="hostQrNotice" style="display: none; color: var(--warning); font-size: 0.75rem; margin-top: 6px;">
+            Payload exceeds single-block QR capacity — use 1-click Copy/Paste below.
+          </p>
+        </div>
         <div>
           <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Offer SDP JSON (share with guest):</label>
           <textarea class="sdp-box" id="txtOfferOutput" readonly placeholder="Click 'Generate Offer' above..."></textarea>
@@ -571,6 +577,12 @@
         </div>
         <div style="border-top: 1px solid var(--card-border); padding-top: 12px;">
           <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Your Answer SDP JSON (send back to host):</label>
+          <div id="guestQrContainer" style="display: none; text-align: center; padding: 8px 0;">
+            <canvas id="guestQrCanvas" style="border-radius: 6px; image-rendering: pixelated;"></canvas>
+            <p id="guestQrNotice" style="display: none; color: var(--warning); font-size: 0.75rem; margin-top: 6px;">
+              Payload exceeds single-block QR capacity — use 1-click Copy/Paste below.
+            </p>
+          </div>
           <textarea class="sdp-box" id="txtAnswerOutput" readonly placeholder="Answer will appear here..."></textarea>
           <button class="btn btn-secondary" id="btnCopyAnswer" style="margin-top: 6px; font-size: 0.75rem;">Copy Answer</button>
         </div>
@@ -585,6 +597,7 @@
     import { RemoteSync } from './src/sync-remote.js';
     import { OfflineStore } from './src/persistence.js';
     import { EditorBinding } from './src/editor.js';
+    import { generateQrMatrix, renderToCanvas, MAX_CAPACITY } from './src/qr.js';
 
     // 1. Initialize Site ID, CRDT, OfflineStore, and Transports
     const siteId = generateSiteId();
@@ -754,6 +767,26 @@
       hostView.style.display = 'none';
     });
 
+    // QR code rendering helper: tries to render payload as QR, shows notice if too large
+    function tryRenderQr(payload, canvasId, containerId, noticeId) {
+      const container = document.getElementById(containerId);
+      const canvas = document.getElementById(canvasId);
+      const notice = document.getElementById(noticeId);
+      container.style.display = 'block';
+      notice.style.display = 'none';
+
+      if (payload.length <= MAX_CAPACITY) {
+        try {
+          const { matrix } = generateQrMatrix(payload);
+          renderToCanvas(canvas, matrix, { cellSize: 4, margin: 4 });
+          canvas.style.display = 'block';
+          return;
+        } catch (_) { /* fall through to notice */ }
+      }
+      canvas.style.display = 'none';
+      notice.style.display = 'block';
+    }
+
     // Host Action: Create Offer
     const btnCreateOffer = document.getElementById('btnCreateOffer');
     const txtOfferOutput = document.getElementById('txtOfferOutput');
@@ -768,6 +801,7 @@
         const offerJson = await remoteSync.createOffer();
         txtOfferOutput.value = offerJson;
         btnCreateOffer.textContent = 'Offer Ready!';
+        tryRenderQr(offerJson, 'hostQrCanvas', 'hostQrContainer', 'hostQrNotice');
       } catch (err) {
         alert('Failed to create offer: ' + err.message);
         btnCreateOffer.textContent = 'Generate Offer';
@@ -817,6 +851,7 @@
         const answerJson = await remoteSync.acceptOfferAndCreateAnswer(offerVal);
         txtAnswerOutput.value = answerJson;
         btnCreateAnswer.textContent = 'Answer Ready!';
+        tryRenderQr(answerJson, 'guestQrCanvas', 'guestQrContainer', 'guestQrNotice');
       } catch (err) {
         alert('Failed to create answer: ' + err.message);
         btnCreateAnswer.textContent = 'Generate Answer';
