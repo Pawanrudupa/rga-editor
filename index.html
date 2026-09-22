@@ -912,6 +912,57 @@
 
     // Initial render
     updateUI();
+
+    // 7. Preview Mode (?preview=1) for demo screenshots
+    if (new URLSearchParams(window.location.search).has('preview')) {
+      p2pStatusDisplay.textContent = 'Connected (P2P)';
+      p2pStatusDot.className = 'status-dot';
+
+      const sample = 'RGA CRDT Editor — Zero-Dependency Collaborative Editing\n\n' +
+        '• Multi-tab sync via BroadcastChannel\n' +
+        '• Cross-device P2P sync via WebRTC DataChannel (Vanilla ICE)\n' +
+        '• Offline queueing & replay via IndexedDB\n' +
+        '• Hand-written QR code generator (GF(2^8) Reed-Solomon)\n' +
+        '• Ephemeral collaborative presence cursors';
+
+      let prevId = null;
+      for (const ch of sample) {
+        const node = crdt.insert(prevId, ch);
+        prevId = node.id;
+      }
+
+      // Create intentional tombstones to showcase CRDT internals
+      const ops = crdt.getOps();
+      if (ops.length > 25) {
+        crdt.delete(ops[4].id);
+        crdt.delete(ops[5].id);
+        crdt.delete(ops[6].id);
+      }
+
+      binding.lastValue = crdt.toString();
+      textarea.value = crdt.toString();
+
+      presence.peers.set('site-b8f2', {
+        cursorIndex: 32,
+        selectionEnd: 32,
+        label: 'site-b8f2',
+        color: '#f472b6',
+        lastSeen: Date.now() + 99999999
+      });
+      presence.peers.set('site-e4a1', {
+        cursorIndex: 125,
+        selectionEnd: 125,
+        label: 'site-e4a1',
+        color: '#34d399',
+        lastSeen: Date.now() + 99999999
+      });
+
+      inspectorBody.style.display = 'block';
+      document.getElementById('inspectorArrow').textContent = '▲';
+
+      updateUI();
+      presence.update();
+    }
   </script>
 </body>
 </html>

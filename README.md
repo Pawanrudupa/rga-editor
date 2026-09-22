@@ -1,5 +1,7 @@
 # Zero-Dependency Collaborative Text Editor (RGA CRDT)
 
+![RGA CRDT Collaborative Editor Demo](assets/social-preview.svg)
+
 A peer-to-peer, offline-first collaborative text editor built completely from scratch in pure vanilla JavaScript (ES6+). 
 
 Implements a hand-rolled **Replicated Growable Array (RGA)** Conflict-free Replicated Data Type (CRDT), multi-tab synchronization via `BroadcastChannel`, cross-device peer-to-peer sync via **WebRTC DataChannels** (featuring a hand-crafted Canvas QR code encoder), **IndexedDB** offline queuing with causal deduplication, and collaborative **presence cursors**.
