@@ -28,6 +28,9 @@ export class LocalSync {
     /** @type {Set<(ops: object[]) => void>} */
     this.syncResponseCallbacks = new Set();
 
+    /** @type {Set<(presence: object) => void>} */
+    this.presenceCallbacks = new Set();
+
     this.channel.onmessage = (event) => {
       this._handleMessage(event.data);
     };
@@ -102,12 +105,36 @@ export class LocalSync {
   }
 
   /**
+   * Broadcasts ephemeral presence data (cursor/selection) to peer tabs.
+   * @param {object} presenceData - { siteId, cursorIndex, selectionEnd, label }
+   */
+  broadcastPresence(presenceData) {
+    if (!presenceData) return;
+    this.channel.postMessage({
+      type: 'presence',
+      presence: presenceData,
+      senderSiteId: this.siteId,
+    });
+  }
+
+  /**
+   * Registers a callback invoked when presence data arrives from another tab.
+   * @param {(presence: object) => void} callback
+   * @returns {() => void} Unsubscribe function
+   */
+  onPresence(callback) {
+    this.presenceCallbacks.add(callback);
+    return () => this.presenceCallbacks.delete(callback);
+  }
+
+  /**
    * Closes the BroadcastChannel and cleans up all listeners.
    */
   destroy() {
     this.opCallbacks.clear();
     this.syncRequestCallbacks.clear();
     this.syncResponseCallbacks.clear();
+    this.presenceCallbacks.clear();
     this.channel.close();
   }
 
@@ -132,6 +159,10 @@ export class LocalSync {
         for (const cb of this.syncResponseCallbacks) {
           cb(data.ops);
         }
+      }
+    } else if (data.type === 'presence' && data.presence) {
+      for (const cb of this.presenceCallbacks) {
+        cb(data.presence);
       }
     }
   }

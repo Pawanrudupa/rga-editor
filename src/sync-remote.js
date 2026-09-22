@@ -40,6 +40,9 @@ export class RemoteSync {
 
     /** @type {Set<(ops: object[]) => void>} */
     this.syncResponseCallbacks = new Set();
+
+    /** @type {Set<(presence: object) => void>} */
+    this.presenceCallbacks = new Set();
   }
 
   /**
@@ -198,6 +201,35 @@ export class RemoteSync {
   }
 
   /**
+   * Broadcasts ephemeral presence data over the WebRTC data channel.
+   * @param {object} presenceData - { siteId, cursorIndex, selectionEnd, label }
+   */
+  broadcastPresence(presenceData) {
+    if (!presenceData) return;
+    if (this.dataChannel && this.dataChannel.readyState === 'open') {
+      try {
+        this.dataChannel.send(JSON.stringify({
+          type: 'presence',
+          presence: presenceData,
+          senderSiteId: this.siteId,
+        }));
+      } catch (err) {
+        // Presence is ephemeral — silently drop on send failure
+      }
+    }
+  }
+
+  /**
+   * Registers a callback for remote presence data received over WebRTC.
+   * @param {(presence: object) => void} callback
+   * @returns {() => void}
+   */
+  onPresence(callback) {
+    this.presenceCallbacks.add(callback);
+    return () => this.presenceCallbacks.delete(callback);
+  }
+
+  /**
    * Waits for complete ICE gathering before serializing SDP.
    * @private
    * @param {RTCPeerConnection} pc
@@ -300,6 +332,10 @@ export class RemoteSync {
       } else if (data.type === 'sync-response' && Array.isArray(data.ops)) {
         for (const cb of this.syncResponseCallbacks) {
           cb(data.ops);
+        }
+      } else if (data.type === 'presence' && data.presence) {
+        for (const cb of this.presenceCallbacks) {
+          cb(data.presence);
         }
       }
     } catch (err) {

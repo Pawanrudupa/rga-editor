@@ -505,7 +505,9 @@
         <span>Document Editor</span>
         <span id="cursorPos">Ln 1, Col 1</span>
       </div>
-      <textarea id="editor" placeholder="Type here... Open another tab or click P2P Remote Sync to test collaborative editing!" spellcheck="false"></textarea>
+      <div id="editorContainer" style="position: relative;">
+        <textarea id="editor" placeholder="Type here... Open another tab or click P2P Remote Sync to test collaborative editing!" spellcheck="false"></textarea>
+      </div>
       <div class="editor-footer">
         <div class="metrics-group">
           <div class="metric"><span>Visible Chars:</span> <strong id="metricChars">0</strong></div>
@@ -513,6 +515,10 @@
           <div class="metric"><span>Tombstones:</span> <strong id="metricTombstones">0</strong></div>
           <div class="metric"><span>Ops Generated:</span> <strong id="metricOps">0</strong></div>
           <div class="metric"><span>Lamport Counter:</span> <strong id="metricClock">0</strong></div>
+          <div class="metric">
+            <button class="btn btn-secondary" id="btnRunGC" style="font-size: 0.7rem; padding: 2px 8px;" title="Run tombstone garbage collection (leaf-only, causally safe)">Run GC</button>
+            <span id="gcStatus" style="font-size: 0.7rem; color: var(--text-muted);"></span>
+          </div>
         </div>
       </div>
     </div>
@@ -598,6 +604,7 @@
     import { OfflineStore } from './src/persistence.js';
     import { EditorBinding } from './src/editor.js';
     import { generateQrMatrix, renderToCanvas, MAX_CAPACITY } from './src/qr.js';
+    import { PresenceManager } from './src/presence.js';
 
     // 1. Initialize Site ID, CRDT, OfflineStore, and Transports
     const siteId = generateSiteId();
@@ -620,12 +627,47 @@
 
     // 2. Bind Editor
     const textarea = document.getElementById('editor');
+    const editorContainer = document.getElementById('editorContainer');
     const binding = new EditorBinding(textarea, crdt, [localSync, remoteSync], {
       offlineStore,
-      onUpdate: updateUI,
+      onUpdate: () => {
+        updateUI();
+        // Re-render remote cursors when text changes (positions may have shifted)
+        if (presence) presence.update();
+      },
     });
 
-    // 3. WebRTC Status Listener
+    // 3. Presence Cursors
+    const presence = new PresenceManager(siteId, textarea, editorContainer);
+    presence.addTransport(localSync);
+    presence.addTransport(remoteSync);
+
+    // 4. Tombstone GC Button
+    const btnRunGC = document.getElementById('btnRunGC');
+    const gcStatus = document.getElementById('gcStatus');
+
+    btnRunGC.addEventListener('click', () => {
+      // Gather known site counters: local site + any sites we've seen ops from
+      const counters = {};
+      counters[siteId] = crdt.clock.peek();
+
+      // Scan all ops to discover remote site IDs and their max counters
+      for (const op of crdt.getOps()) {
+        if (op.id && op.id.siteId) {
+          const existing = counters[op.id.siteId] || 0;
+          if (op.id.counter > existing) {
+            counters[op.id.siteId] = op.id.counter;
+          }
+        }
+      }
+
+      const result = crdt.gcTombstones(counters);
+      gcStatus.textContent = `Collected ${result.collected}, ${result.remaining} remaining`;
+      setTimeout(() => { gcStatus.textContent = ''; }, 3000);
+      updateUI();
+    });
+
+    // 5. WebRTC Status Listener
     const p2pStatusDisplay = document.getElementById('p2pStatusDisplay');
     const p2pStatusDot = document.getElementById('p2pStatusDot');
 
@@ -634,7 +676,7 @@
       p2pStatusDot.className = 'status-dot ' + (status === 'connected' ? '' : (status === 'connecting' ? 'yellow' : 'gray'));
     });
 
-    // 4. Offline Mode Simulation
+    // 6. Offline Mode Simulation
     let isSimulatedOffline = false;
     const btnOfflineToggle = document.getElementById('btnOfflineToggle');
     const offlineQueueDisplay = document.getElementById('offlineQueueDisplay');

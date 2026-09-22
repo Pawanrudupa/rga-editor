@@ -266,6 +266,102 @@ export class CRDT {
   }
 
   /**
+   * Garbage-collects tombstone nodes that are causally safe to remove.
+   *
+   * A tombstone is eligible for collection only if ALL of these conditions hold:
+   *   1. node.deleted === true (it's a tombstone)
+   *   2. node.children.length === 0 (no other node was inserted after it — "leaf" tombstone)
+   *   3. For EVERY siteId in knownSiteCounters, knownSiteCounters[siteId] >= node.id.counter
+   *      (every known site's Lamport clock has advanced past this node's creation timestamp,
+   *       so no unseen operation from any known site could still reference this node)
+   *
+   * IMPORTANT LIMITATIONS:
+   * - Requires full site knowledge: knownSiteCounters must include every site that has
+   *   ever participated. If a site is missing (e.g. offline and not yet synced), its
+   *   counter won't be checked, and we might GC a tombstone it still references.
+   *   The caller is responsible for ensuring completeness.
+   * - Leaf-only: Tombstones with children (nodes inserted after them) are never collected,
+   *   even if causally safe. Collecting non-leaf tombstones would require re-parenting
+   *   children, changing the RGA tree structure and risking ordering bugs.
+   * - No op log compaction: Ops removed from this.ops mean a new peer joining after GC
+   *   cannot reconstruct full history. A production system would pair this with snapshots.
+   * - Unsafe with silent join/leave: In an open system where unknown sites can appear,
+   *   GC is fundamentally unsafe. This requires a membership protocol not implemented here.
+   *
+   * @param {Object<string, number>} knownSiteCounters - Maps each known siteId to the
+   *   highest Lamport counter observed from that site. Example: { 'site-abc': 42, 'site-xyz': 37 }
+   * @returns {{ collected: number, remaining: number }} Count of tombstones removed and remaining.
+   */
+  gcTombstones(knownSiteCounters) {
+    if (!knownSiteCounters || typeof knownSiteCounters !== 'object') {
+      throw new Error('gcTombstones requires a knownSiteCounters object');
+    }
+
+    const siteIds = Object.keys(knownSiteCounters);
+    if (siteIds.length === 0) {
+      throw new Error('gcTombstones requires at least one site in knownSiteCounters');
+    }
+
+    const toCollect = [];
+    let remaining = 0;
+
+    // Scan all nodes for eligible tombstones
+    let curr = this.root.next;
+    while (curr) {
+      if (curr.deleted) {
+        // Check eligibility
+        const isLeaf = curr.children.length === 0;
+        let isCausallySafe = true;
+
+        if (isLeaf && curr.id) {
+          for (const siteId of siteIds) {
+            if (knownSiteCounters[siteId] < curr.id.counter) {
+              isCausallySafe = false;
+              break;
+            }
+          }
+        } else {
+          isCausallySafe = false;
+        }
+
+        if (isLeaf && isCausallySafe) {
+          toCollect.push(curr);
+        } else {
+          remaining++;
+        }
+      }
+      curr = curr.next;
+    }
+
+    // Physically remove eligible tombstones
+    for (const node of toCollect) {
+      // 1. Unlink from doubly-linked list
+      if (node.prev) node.prev.next = node.next;
+      if (node.next) node.next.prev = node.prev;
+
+      // 2. Remove from parent's children array
+      const parentKey = idKey(node.afterId);
+      const parent = this.nodesById.get(parentKey);
+      if (parent) {
+        const idx = parent.children.indexOf(node);
+        if (idx !== -1) parent.children.splice(idx, 1);
+      }
+
+      // 3. Remove from nodesById
+      const key = idKey(node.id);
+      this.nodesById.delete(key);
+
+      // 4. Remove corresponding ops (both insert and delete)
+      this.ops = this.ops.filter(op => {
+        if (!op.id) return true;
+        return !(op.id.siteId === node.id.siteId && op.id.counter === node.id.counter);
+      });
+    }
+
+    return { collected: toCollect.length, remaining };
+  }
+
+  /**
    * Internal method: splices a node into the RGA data structure.
    * Maintains both the linked list and the sorted child tree.
    *
