@@ -11,7 +11,7 @@ Implements a hand-rolled **Replicated Growable Array (RGA)** Conflict-free Repli
 ---
 
 ## Why This Project Exists
-
+----------------------------
 Most collaborative text editors rely on high-level libraries like Yjs, Automerge, or ShareDB. While production-ready, these black-box abstractions hide the fundamental distributed systems problems:
 1. How do two replicas agree on the exact sequence of characters without a centralized server?
 2. How do we prevent concurrent edits from clobbering each other across network partitions?
